@@ -3,11 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-   <title>なんばんめ</title>
-  <meta property="og:title" content="なんばんめ">
-    <meta property="og:description" content="【１年算数ものとひとのかず】なんばんめの問題の練習アプリです。">
-    <meta property="og:type" content="website">
-
+  <title>なんばんめ</title>
+  
   <!-- 丸くてかわいいフォント（Zen Maru Gothic）を読み込む -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,6 +23,7 @@
       -webkit-touch-callout: none;
       -webkit-user-select: none;
       user-select: none;
+      -webkit-user-drag: none;
     }
     @keyframes pop-center {
       0% { transform: scale(0.5) translate(-50%, -50%); opacity: 0; }
@@ -78,7 +76,7 @@
     }
   </style>
 </head>
-<body class="bg-slate-900 text-slate-800">
+<body class="bg-slate-900 text-slate-800" oncontextmenu="return false;">
   <div id="root"></div>
 
   <script type="text/babel">
