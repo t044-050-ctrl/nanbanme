@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>なんばんめ</title>
+  
+  <!-- 丸くてかわいいフォント（Zen Maru Gothic）を読み込む -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- スクショ機能のためのライブラリ -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+  <style>
+    body { 
+      touch-action: manipulation; 
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    @keyframes pop-center {
+      0% { transform: scale(0.5) translate(-50%, -50%); opacity: 0; }
+      50% { transform: scale(1.2) translate(-50%, -50%); opacity: 1; }
+      100% { transform: scale(1) translate(-50%, -50%); opacity: 1; }
+    }
+    .animate-pop-center { 
+      animation: pop-center 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; 
+      transform-origin: top left;
+    }
+    
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
+    }
+    .animate-shake { animation: shake 0.4s ease-in-out; }
+    
+    @keyframes bump {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+    }
+    .animate-bump { animation: bump 0.3s ease-out; }
+
+    /* 吸い込まれるアニメーション */
+    @keyframes fly-to-score {
+      0%, 55% { transform: translate(-50%, -50%) scale(1.5); opacity: 1; top: 50%; left: 50%; }
+      100% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; top: 8%; left: 80%; }
+    }
+    @keyframes fly-to-lines {
+      0%, 55% { transform: translate(-50%, -50%) scale(1.5); opacity: 1; top: 50%; left: 50%; }
+      100% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; top: 8%; left: 90%; }
+    }
+    .fly-anim-score {
+      animation: fly-to-score 1.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      position: fixed;
+      z-index: 9999;
+      pointer-events: none;
+    }
+    .fly-anim-lines {
+      animation: fly-to-lines 1.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      position: fixed;
+      z-index: 9999;
+      pointer-events: none;
+    }
+    
+    /* フォント全体設定 */
+    body, div, span, h1, h2, h3, h4, h5, h6, p, a, button, input {
+      font-family: 'Zen Maru Gothic', sans-serif !important;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-800">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // --- Icons ---
+    const Play = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>;
+    const RefreshCw = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>;
+    const ArrowDown = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>;
+    const ArrowLeft = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>;
+    const ArrowRight = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>;
+    const Star = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>;
+    const RefreshCcw = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"></polyline><polyline points="23 20 23 14 17 14"></polyline><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path></svg>;
+    const Volume2 = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>;
+    const VolumeX = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>;
+    const Camera = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>;
+    const ThickDoubleCircle = () => <svg viewBox="0 0 100 100" className="w-[15rem] h-[15rem] text-red-500 drop-shadow-xl"><circle cx="50" cy="50" r="35" fill="none" stroke="currentColor" strokeWidth="10"/><circle cx="50" cy="50" r="15" fill="none" stroke="currentColor" strokeWidth="10"/></svg>;
+
+    // --- Audio System ---
+    let audioCtx = null;
+    const playTone = (freq, type, duration, vol, soundOn) => {
+      if (!soundOn) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {
+        console.log("Audio error", e);
+      }
+    };
+
+    const soundEffects = {
+      correct: (on) => {
+        playTone(1046.50, 'sine', 0.1, 0.3, on);
+        setTimeout(() => playTone(1318.51, 'sine', 0.1, 0.3, on), 100);
+        setTimeout(() => playTone(1567.98, 'sine', 0.2, 0.3, on), 200);
+        setTimeout(() => playTone(2093.00, 'sine', 0.4, 0.3, on), 300);
+      },
+      wrong: (on) => playTone(150, 'sawtooth', 0.3, 0.3, on),
+      tick: (on) => playTone(600, 'sine', 0.05, 0.1, on),
+      clear: (on) => {
+        playTone(523.25, 'sine', 0.1, 0.3, on);
+        setTimeout(() => playTone(659.25, 'sine', 0.1, 0.3, on), 100);
+        setTimeout(() => playTone(783.99, 'sine', 0.2, 0.3, on), 200);
+        setTimeout(() => playTone(1046.50, 'sine', 0.4, 0.3, on), 300);
+      },
+      pop: (on) => {
+        // メーターが増える時の音を、より高くて軽い音に変更
+        playTone(1760, 'sine', 0.05, 0.1, on);
+        setTimeout(() => playTone(2093, 'sine', 0.05, 0.1, on), 60);
+      }
+    };
+
+    const COLORS = ['#fda4af', '#fdba74', '#fef08a', '#86efac', '#67e8f9', '#93c5fd', '#d8b4fe'];
+    const ITEMS = [
+      { name: 'ひと', emojis: ['👦🏻', '👧🏻'], unit: 'にん', verb: 'います' },
+      { name: 'どうぶつ', emojis: ['🐶', '🐱', '🐰', '🐻', '🐨', '🐼'], unit: 'ひき', verb: 'います' },
+      { name: 'たべもの', emojis: ['🍎', '🍌', '🍇', '🍓', '🍔', '🍙'], unit: 'こ', verb: 'あります' },
+      { name: 'のりもの', emojis: ['🚗', '🚕', '🚙', '🚌', '🚓', '🚒'], unit: 'だい', verb: 'あります' }
+    ];
+
+    const BOARD_WIDTH = 10;
+    const BOARD_HEIGHT = 12;
+    const QUESTIONS_PER_STAGE = 3;
+
+    // --- Rolling Number Component ---
+    const RollingNumber = ({ value }) => {
+      const [displayValue, setDisplayValue] = useState(value);
+      useEffect(() => {
+        if (value === displayValue) return;
+        const diff = value - displayValue;
+        const step = Math.max(1, Math.floor(Math.abs(diff) / 10));
+        const timer = setInterval(() => {
+          setDisplayValue(prev => {
+            if (prev < value) return Math.min(prev + step, value);
+            if (prev > value) return Math.max(prev - step, value);
+            clearInterval(timer);
+            return prev;
+          });
+        }, 30);
+        return () => clearInterval(timer);
+      }, [value, displayValue]);
+      return <span>{displayValue}</span>;
+    };
+
+    // ==========================================
+    // MATH STAGE
+    // ==========================================
+    const MathStage = ({ onComplete, addScore, progress, setProgress, soundOn, triggerFly, questionMode }) => {
+      const [currentQ, setCurrentQ] = useState(null);
+      const [useBlocks, setUseBlocks] = useState(false);
+      const [animatingEmojiIndex, setAnimatingEmojiIndex] = useState(null);
+      const [correctAnim, setCorrectAnim] = useState(false);
+      const [markedEmojis, setMarkedEmojis] = useState([]);
+
+      const setupQuestion = useCallback(() => {
+        const length = Math.floor(Math.random() * 8) + 5; 
+        const itemCategory = ITEMS[Math.floor(Math.random() * ITEMS.length)];
+        const singleEmoji = itemCategory.emojis[Math.floor(Math.random() * itemCategory.emojis.length)];
+        const row = Array.from({ length }).map(() => singleEmoji);
+        const unit = itemCategory.unit;
+        const verb = itemCategory.verb;
+
+        const tIndex = Math.floor(Math.random() * (length - 2)) + 1;
+        const fromFront = tIndex + 1;
+        const fromBack = length - tIndex;
+        const inFront = tIndex;
+        const inBack = length - tIndex - 1;
+
+        const allPatterns = [
+          // Mode: TAP (○ばんめはどれ？)
+          { type: 'TAP', pattern: 'A', prompt: `まえから ${fromFront} ばんめ。`, answer: tIndex },
+          { type: 'TAP', pattern: 'A', prompt: `うしろから ${fromBack} ばんめ。`, answer: tIndex },
+          // Mode: POSITION (まえから○ばんめ？)
+          { type: 'POSITION', pattern: 'B', prompt: `まえに ${inFront} ${unit}ならんでいます。まえから なんばんめでしょう。`, answer: fromFront },
+          { type: 'POSITION', pattern: 'B', prompt: `うしろに ${inBack} ${unit}ならんでいます。うしろから なんばんめでしょう。`, answer: fromBack },
+          // Mode: IN_FRONT (まえに○にん？)
+          { type: 'IN_FRONT', pattern: 'B', prompt: `まえから ${fromFront} ばんめに ${verb}。まえに なん${unit} ${verb}か。`, answer: inFront },
+          { type: 'IN_FRONT', pattern: 'B', prompt: `うしろから ${fromBack} ばんめに ${verb}。うしろに なん${unit} ${verb}か。`, answer: inBack },
+          { type: 'IN_FRONT', pattern: 'B', prompt: `${length} ${unit}ならんでいます。まえから ${fromFront} ばんめに ${verb}。うしろに なん${unit} ${verb}か。`, answer: inBack },
+          { type: 'IN_FRONT', pattern: 'B', prompt: `${length} ${unit}ならんでいます。うしろから ${fromBack} ばんめに ${verb}。まえに なん${unit} ${verb}か。`, answer: inFront },
+          // Mode: TOTAL (ぜんぶで○にん？)
+          { type: 'TOTAL', pattern: 'B', prompt: `まえから ${fromFront} ばんめに${verb}。うしろに ${inBack} ${unit}${verb}。ぜんぶで なん${unit}でしょう。`, answer: length },
+          { type: 'TOTAL', pattern: 'B', prompt: `うしろから ${fromBack} ばんめに${verb}。まえに ${inFront} ${unit}${verb}。ぜんぶで なん${unit}でしょう。`, answer: length }
+        ];
+
+        let availablePatterns = allPatterns;
+        if (questionMode !== 'MIX') {
+          availablePatterns = allPatterns.filter(p => p.type === questionMode);
+        }
+
+        const selectedQ = availablePatterns[Math.floor(Math.random() * availablePatterns.length)];
+        setCurrentQ({ items: row, targetIndex: tIndex, ...selectedQ });
+        setUseBlocks(false);
+        setCorrectAnim(false);
+        setMarkedEmojis([]);
+      }, [questionMode]);
+
+      useEffect(() => { if (!currentQ) setupQuestion(); }, [currentQ, setupQuestion]);
+
+      const handleCorrect = () => {
+        soundEffects.correct(soundOn);
+        setCorrectAnim(true);
+        triggerFly('score', '+20pt');
+        
+        setTimeout(() => {
+          addScore(20);
+          soundEffects.pop(soundOn); // スコア増加時に効果音
+        }, 1800); // 1秒静止 + 0.8秒アニメーション
+
+        setTimeout(() => {
+          if (progress + 1 >= QUESTIONS_PER_STAGE) {
+            setProgress(0);
+            onComplete();
+          } else {
+            setProgress(p => p + 1);
+            setupQuestion();
+          }
+        }, 2500); // アニメーション延長に合わせて次の問題へも少し遅らせる
+      };
+
+      const handleIncorrect = (index) => {
+        soundEffects.wrong(soundOn);
+        setAnimatingEmojiIndex(index);
+        setTimeout(() => setAnimatingEmojiIndex(null), 400);
+      };
+
+      const handleEmojiTap = (index) => {
+        if (correctAnim) return;
+        if (currentQ.pattern === 'A') {
+          if (index === currentQ.answer) handleCorrect();
+          else handleIncorrect(index);
+        } else {
+          setMarkedEmojis(prev => prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]);
+        }
+      };
+
+      const handleNumpadTap = (num) => {
+        if (correctAnim || currentQ.pattern !== 'B') return;
+        if (num === currentQ.answer) handleCorrect();
+        else handleIncorrect(-1);
+      };
+
+      if (!currentQ) return null;
+      const { items, targetIndex } = currentQ;
+
+      return (
+        <div className="flex-1 flex flex-col h-full gap-4 relative">
+          <div className="bg-white rounded-3xl p-4 sm:p-6 shadow-xl flex-1 flex flex-col relative border-4 border-sky-200 overflow-hidden">
+            <div className="flex-1 flex flex-col justify-center mb-4 sm:mb-6 min-h-[150px] w-full relative">
+              
+              {correctAnim && (
+                <div className="absolute top-1/2 left-1/2 z-50 pointer-events-none flex flex-col-reverse items-center animate-pop-center drop-shadow-xl" style={{ transform: 'translate(-50%, -50%)' }}>
+                  <ThickDoubleCircle />
+                </div>
+              )}
+
+              <div className="flex justify-between text-base sm:text-lg font-black text-slate-500 mb-2 px-4">
+                <span className="bg-sky-100 px-3 py-1 rounded-lg">← まえ</span>
+                <span className="bg-sky-100 px-3 py-1 rounded-lg">うしろ →</span>
+              </div>
+              
+              <div className={`flex flex-nowrap justify-around items-center w-full bg-slate-50 py-6 sm:py-8 px-2 sm:px-4 rounded-2xl border-2 border-slate-100 overflow-hidden ${animatingEmojiIndex === -1 ? 'animate-shake' : ''}`}>
+                {items.map((emoji, idx) => {
+                  const sizeVal = Math.min(100 / items.length, 12);
+                  const iconSizeStyle = { width: `min(4rem, ${sizeVal + 1}vw)`, height: `min(4rem, ${sizeVal + 1}vw)` };
+                  
+                  return (
+                    <div 
+                      key={idx} 
+                      onClick={() => handleEmojiTap(idx)}
+                      className={`relative cursor-pointer transition-transform hover:scale-105 active:scale-95 flex-1 flex justify-center items-center ${animatingEmojiIndex === idx ? 'animate-shake' : ''}`}
+                    >
+                      {useBlocks ? (
+                        <div className="bg-white border sm:border-2 border-slate-300 rounded shadow-sm flex items-center justify-center" style={iconSizeStyle}>
+                          {currentQ.pattern === 'B' && idx === targetIndex ? 
+                            <div className="w-[60%] h-[60%] rounded-full bg-orange-500" /> : 
+                            <div className="w-[60%] h-[60%] bg-blue-500" />
+                          }
+                        </div>
+                      ) : (
+                        <div className="drop-shadow-md flex items-center justify-center leading-none" style={{ fontSize: `min(4rem, ${sizeVal + 1}vw)` }}>
+                          {emoji}
+                        </div>
+                      )}
+                      
+                      {(markedEmojis.includes(idx) || (correctAnim && currentQ.pattern === 'A' && idx === currentQ.answer)) && (
+                        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                          <div className="border-[3px] sm:border-[4px] border-red-500 rounded-full" style={{ width: iconSizeStyle.width, height: iconSizeStyle.height, transform: 'scale(1.2)' }}></div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="text-center mb-4 sm:mb-6 flex-shrink-0">
+              <p className="text-xl sm:text-2xl font-black text-slate-700 leading-relaxed break-keep px-2">{currentQ.prompt}</p>
+            </div>
+
+            {currentQ.pattern === 'B' && (
+              <div className="flex flex-col gap-2 relative z-20 pb-2">
+                <div className="flex justify-center gap-1 sm:gap-2">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
+                    <button key={num} onClick={() => handleNumpadTap(num)} disabled={correctAnim} className="w-8 h-8 sm:w-12 sm:h-12 bg-slate-100 rounded sm:rounded-lg shadow-sm font-bold text-lg sm:text-xl border-b-2 sm:border-b-4 border-slate-300 hover:bg-sky-100 hover:border-sky-300 active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center">{num}</button>
+                  ))}
+                </div>
+                <div className="flex justify-center gap-1 sm:gap-2">
+                  {[11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map(num => (
+                    <button key={num} onClick={() => handleNumpadTap(num)} disabled={correctAnim} className="w-8 h-8 sm:w-12 sm:h-12 bg-slate-100 rounded sm:rounded-lg shadow-sm font-bold text-lg sm:text-xl border-b-2 sm:border-b-4 border-slate-300 hover:bg-sky-100 hover:border-sky-300 active:translate-y-1 active:border-b-0 transition-all flex items-center justify-center">{num}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button onClick={() => setUseBlocks(!useBlocks)} className="absolute top-4 right-4 bg-orange-100 text-orange-600 p-2 rounded-xl font-bold shadow-sm border border-orange-200 hover:bg-orange-200 transition text-sm sm:text-base z-30">
+              {useBlocks ? 'えにもどす' : 'ブロックにする'}
+            </button>
+            
+            <div className="absolute top-4 left-4 flex gap-1 z-30">
+              {[...Array(QUESTIONS_PER_STAGE)].map((_, i) => (
+                <div key={i} className={`w-3 h-3 rounded-full ${i < progress ? 'bg-sky-500' : 'bg-slate-200'}`} />
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // ==========================================
+    // MINI GAME STAGE (TETRIS)
+    // ==========================================
+    const createRandomPiece = () => {
+      const shapes = [
+        [[1, 1, 1, 1]], [[1, 1], [1, 1]], [[0, 1, 0], [1, 1, 1]], 
+        [[1, 0, 0], [1, 1, 1]], [[0, 0, 1], [1, 1, 1]], [[0, 1, 1], [1, 1, 0]], [[1, 1, 0], [0, 1, 1]]
+      ];
+      const shape = shapes[Math.floor(Math.random() * shapes.length)];
+      const colors = shape.map(row => row.map(cell => cell ? COLORS[Math.floor(Math.random() * COLORS.length)] : null));
+      return { shape, colors, x: Math.floor(BOARD_WIDTH / 2) - Math.floor(shape[0].length / 2), y: 0 };
+    };
+
+    const MiniGameStage = ({ onTimeUp, onQuit, onRetry, addScore, addLines, board, setBoard, soundOn, triggerFly }) => {
+      const [timeLeft, setTimeLeft] = useState(60);
+      const [currentPiece, setCurrentPiece] = useState(createRandomPiece);
+      const [gameState, setGameState] = useState('PLAYING');
+      const [quizData, setQuizData] = useState(null);
+      const [scoreAnim, setScoreAnim] = useState(null);
+      const [showAnswerResult, setShowAnswerResult] = useState(null); // 'CORRECT' or 'WRONG'
+
+      useEffect(() => {
+        if (gameState !== 'PLAYING') return;
+        const timer = setInterval(() => {
+          setTimeLeft(prev => {
+            if (prev <= 1) { clearInterval(timer); onTimeUp(); return 0; }
+            return prev - 1;
+          });
+        }, 1000);
+        return () => clearInterval(timer);
+      }, [gameState, onTimeUp]);
+
+      const checkCollision = useCallback((piece, boardToCheck = board) => {
+        for (let y = 0; y < piece.shape.length; y++) {
+          for (let x = 0; x < piece.shape[y].length; x++) {
+            if (piece.shape[y][x]) {
+              const boardX = piece.x + x;
+              const boardY = piece.y + y;
+              if (boardX < 0 || boardX >= BOARD_WIDTH || boardY >= BOARD_HEIGHT || (boardY >= 0 && boardToCheck[boardY][boardX] !== null)) {
+                return true;
+              }
+            }
+          }
+        }
+        return false;
+      }, [board]);
+
+      const mergePiece = useCallback(() => {
+        const newBoard = board.map(row => [...row]);
+        let merged = false;
+        for (let y = 0; y < currentPiece.shape.length; y++) {
+          for (let x = 0; x < currentPiece.shape[y].length; x++) {
+            if (currentPiece.shape[y][x]) {
+              const boardY = currentPiece.y + y;
+              const boardX = currentPiece.x + x;
+              if (boardY >= 0 && boardY < BOARD_HEIGHT) {
+                newBoard[boardY][boardX] = currentPiece.colors[y][x];
+                merged = true;
+              }
+            }
+          }
+        }
+        if(merged) soundEffects.tick(soundOn);
+
+        let linesToClear = [];
+        for (let y = 0; y < BOARD_HEIGHT; y++) {
+          if (newBoard[y].every(cell => cell !== null)) {
+            linesToClear.push(y);
+          }
+        }
+
+        if (linesToClear.length > 0) {
+          setGameState('QUIZ');
+          
+          const quizzes = linesToClear.map(lineY => {
+            const isFromLeft = Math.random() > 0.5;
+            const targetX = Math.floor(Math.random() * BOARD_WIDTH);
+            const targetColor = newBoard[lineY][targetX];
+            
+            let newOptions = COLORS.slice().sort(() => Math.random() - 0.5).slice(0, 4);
+            if (!newOptions.includes(targetColor)) {
+              newOptions[Math.floor(Math.random() * 4)] = targetColor;
+            }
+
+            return {
+              lineY,
+              prompt: `${isFromLeft ? 'ひだり' : 'みぎ'}から ${isFromLeft ? targetX + 1 : BOARD_WIDTH - targetX} ばんめは なにいろ？`,
+              answer: targetColor,
+              options: newOptions
+            };
+          });
+
+          setQuizData({
+            board: newBoard,
+            quizzes,
+            currentQuizIndex: 0
+          });
+          soundEffects.clear(soundOn);
+        } else {
+          setBoard(newBoard);
+          const nextPiece = createRandomPiece();
+          if (checkCollision(nextPiece, newBoard)) {
+            setGameState('GAMEOVER');
+          } else {
+            setCurrentPiece(nextPiece);
+          }
+        }
+      }, [board, currentPiece, soundOn, setBoard, checkCollision]);
+
+      useEffect(() => {
+        if (gameState !== 'PLAYING') return;
+        const dropTimer = setInterval(() => {
+          const nextPiece = { ...currentPiece, y: currentPiece.y + 1 };
+          if (!checkCollision(nextPiece)) setCurrentPiece(nextPiece);
+          else mergePiece();
+        }, 1500); // 1.5倍ゆっくりに修正
+        return () => clearInterval(dropTimer);
+      }, [currentPiece, gameState, checkCollision, mergePiece]);
+
+      const move = useCallback((dx) => {
+        if (gameState !== 'PLAYING') return;
+        const nextPiece = { ...currentPiece, x: currentPiece.x + dx };
+        if (!checkCollision(nextPiece)) { setCurrentPiece(nextPiece); soundEffects.tick(soundOn); }
+      }, [currentPiece, gameState, checkCollision, soundOn]);
+
+      const rotate = useCallback(() => {
+        if (gameState !== 'PLAYING') return;
+        const rotatedShape = currentPiece.shape[0].map((_, i) => currentPiece.shape.map(row => row[i]).reverse());
+        const rotatedColors = currentPiece.colors[0].map((_, i) => currentPiece.colors.map(row => row[i]).reverse());
+        const nextPiece = { ...currentPiece, shape: rotatedShape, colors: rotatedColors };
+        if (!checkCollision(nextPiece)) { setCurrentPiece(nextPiece); soundEffects.tick(soundOn); }
+      }, [currentPiece, gameState, checkCollision, soundOn]);
+
+      const moveDown = useCallback(() => {
+        if (gameState !== 'PLAYING') return;
+        const nextPiece = { ...currentPiece, y: currentPiece.y + 1 };
+        if (!checkCollision(nextPiece)) {
+          setCurrentPiece(nextPiece);
+          soundEffects.tick(soundOn);
+        } else {
+          mergePiece();
+        }
+      }, [currentPiece, gameState, checkCollision, mergePiece, soundOn]);
+
+      const handleQuizAnswer = (color) => {
+        if (scoreAnim) return;
+        const currentQuiz = quizData.quizzes[quizData.currentQuizIndex];
+        const isCorrect = (color === currentQuiz.answer);
+        const combo = quizData.currentQuizIndex + 1; // 1段目=1, 2段目=2...
+
+        setScoreAnim(true);
+
+        const baseScore = isCorrect ? 200 : 100;
+        const gainedScore = baseScore * combo; // コンボ数に応じてポイント倍増
+        const lineText = combo === 1 ? '1れつ' : `${combo}だん`;
+
+        if (isCorrect) {
+          soundEffects.correct(soundOn);
+          triggerFly('score', `+${gainedScore}pt`);
+          setShowAnswerResult('CORRECT');
+        } else {
+          // 不正解時のブー音や✖表示を削除。ポイントだけ加算して進む。
+          triggerFly('score', `+${gainedScore}pt`);
+        }
+
+        // ポイントのアニメーション（1.8秒）終了後に次の処理へ
+        setTimeout(() => {
+          addScore(gainedScore);
+          soundEffects.pop(soundOn); // スコア増加時の効果音
+          
+          // 列のアニメーションを開始
+          triggerFly('lines', lineText);
+          
+          // 列のアニメーション（1.8秒）終了後
+          setTimeout(() => {
+            addLines(1); // 内部的なクリアライン数は1つずつ増やす
+            soundEffects.pop(soundOn); // 列増加時の効果音
+            
+            // 少し間を置いてから次の問題またはプレイ再開へ
+            setTimeout(() => {
+              setScoreAnim(false);
+              setShowAnswerResult(null);
+              
+              if (quizData.currentQuizIndex + 1 < quizData.quizzes.length) {
+                setQuizData(prev => ({ ...prev, currentQuizIndex: prev.currentQuizIndex + 1 }));
+              } else {
+                let newB = [...quizData.board];
+                const lines = quizData.quizzes.map(q => q.lineY);
+                const remainingRows = newB.filter((_, idx) => !lines.includes(idx));
+                const emptyRows = Array(lines.length).fill(Array(BOARD_WIDTH).fill(null));
+                newB = [...emptyRows, ...remainingRows];
+                
+                setBoard(newB);
+                const nextPiece = createRandomPiece();
+                if (checkCollision(nextPiece, newB)) {
+                  setGameState('GAMEOVER');
+                } else {
+                  setCurrentPiece(nextPiece);
+                  setGameState('PLAYING');
+                }
+                setQuizData(null);
+              }
+            }, 600);
+          }, 1800);
+        }, 1800);
+      };
+
+      const renderCell = (color, isHighlight) => (
+        <div className="relative w-full h-full p-[1px]">
+          {isHighlight && (
+            <div className="absolute inset-[-2px] bg-yellow-400 rounded-md sm:rounded-lg animate-pulse blur-[2px] z-0"></div>
+          )}
+          <div className={`relative z-10 w-full h-full rounded-md sm:rounded-lg ${color ? 'shadow-sm border-b-4 border-r-2 border-black/10' : 'border border-slate-200 bg-transparent'}`} style={{ backgroundColor: color || 'transparent' }} />
+        </div>
+      );
+
+      const displayBoard = gameState === 'QUIZ' && quizData ? quizData.board : board;
+      const currentQuizLineY = gameState === 'QUIZ' && quizData ? quizData.quizzes[quizData.currentQuizIndex].lineY : -1;
+
+      return (
+        <div className="flex-1 flex gap-2 sm:gap-4 h-full min-h-0">
+          <div className="flex-1 bg-yellow-50 rounded-3xl p-2 sm:p-4 flex flex-row relative overflow-hidden shadow-inner gap-2 sm:gap-4 min-h-0">
+            <div className="absolute top-2 left-4 text-slate-700 font-bold text-base sm:text-lg z-10 flex items-center gap-2 bg-yellow-200/90 px-4 py-1 rounded-full shadow-sm">
+               残り: {timeLeft}びょう
+            </div>
+
+            <div className="flex-1 flex justify-center items-center h-full pt-10 pb-2 relative min-h-0">
+              
+              {showAnswerResult === 'CORRECT' && (
+                <div className="absolute top-1/2 left-1/2 z-50 pointer-events-none flex flex-col-reverse items-center animate-pop-center drop-shadow-xl" style={{ transform: 'translate(-50%, -50%)' }}>
+                  <ThickDoubleCircle />
+                </div>
+              )}
+              {/* WRONGのアニメーション（✖印）は削除されました */}
+
+              {gameState === 'GAMEOVER' && (
+                <div className="absolute inset-0 bg-black/40 z-50 flex items-center justify-center rounded-2xl backdrop-blur-sm">
+                  <div className="bg-white p-6 sm:p-8 rounded-3xl flex flex-col gap-6 text-center items-center shadow-2xl border-4 border-yellow-300">
+                    <p className="text-2xl sm:text-3xl font-black text-slate-700">ブロックがいっぱい！</p>
+                    <div className="flex gap-4">
+                      <button onClick={onQuit} className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-6 py-3 rounded-full font-bold shadow-md text-lg transition-transform hover:scale-105 active:scale-95">やめる</button>
+                      <button onClick={() => {
+                        setBoard(Array(BOARD_HEIGHT).fill(Array(BOARD_WIDTH).fill(null)));
+                        onRetry();
+                      }} className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-full font-bold shadow-md text-lg transition-transform hover:scale-105 active:scale-95">もういちど</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col items-center justify-center h-full w-full max-w-[280px] sm:max-w-[360px] min-h-0">
+                <div 
+                  className="bg-white border-4 border-yellow-300 grid w-full shrink relative rounded-xl overflow-hidden shadow-md touch-none m-auto"
+                  style={{ aspectRatio: '10/12', gridTemplateColumns: `repeat(${BOARD_WIDTH}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${BOARD_HEIGHT}, minmax(0, 1fr))` }}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    if (gameState !== 'PLAYING') return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    const w = rect.width;
+                    const h = rect.height;
+                    
+                    // アイテムの現在のサイズ・位置を計算して回転判定に使用
+                    const cellW = w / BOARD_WIDTH;
+                    const cellH = h / BOARD_HEIGHT;
+                    let pMinX = BOARD_WIDTH, pMaxX = 0, pMinY = BOARD_HEIGHT, pMaxY = 0;
+                    for (let r = 0; r < currentPiece.shape.length; r++) {
+                      for (let c = 0; c < currentPiece.shape[r].length; c++) {
+                        if (currentPiece.shape[r][c]) {
+                          pMinX = Math.min(pMinX, c); pMaxX = Math.max(pMaxX, c);
+                          pMinY = Math.min(pMinY, r); pMaxY = Math.max(pMaxY, r);
+                        }
+                      }
+                    }
+                    // タッチしやすくするため0.5マス分の余裕を持たせる
+                    const padX = cellW * 0.5;
+                    const padY = cellH * 0.5;
+                    const pLeft = (currentPiece.x + pMinX) * cellW - padX;
+                    const pRight = (currentPiece.x + pMaxX + 1) * cellW + padX;
+                    const pTop = (currentPiece.y + pMinY) * cellH - padY;
+                    const pBottom = (currentPiece.y + pMaxY + 1) * cellH + padY;
+                    
+                    if (x >= pLeft && x <= pRight && y >= pTop && y <= pBottom) {
+                      rotate();
+                    } else if (y > h * 0.7) {
+                      moveDown();
+                    } else if (x < w * 0.3) {
+                      move(-1);
+                    } else if (x > w * 0.7) {
+                      move(1);
+                    }
+                  }}
+                >
+                  {displayBoard.map((row, y) => row.map((cell, x) => (
+                    <div key={`cell-${x}-${y}`} className="p-[1px]">{renderCell(cell, y === currentQuizLineY)}</div>
+                  )))}
+                  
+                  {gameState === 'PLAYING' && currentPiece.shape.map((row, y) => row.map((cell, x) => {
+                    if (!cell) return null;
+                    const boardY = currentPiece.y + y;
+                    if (boardY < 0) return null;
+                    return (
+                      <div key={`piece-${x}-${y}`} className="absolute p-[2px]" style={{ width: `${100 / BOARD_WIDTH}%`, height: `${100 / BOARD_HEIGHT}%`, left: `${(currentPiece.x + x) * (100 / BOARD_WIDTH)}%`, top: `${boardY * (100 / BOARD_HEIGHT)}%` }}>
+                        {renderCell(currentPiece.colors[y][x])}
+                      </div>
+                    );
+                  }))}
+                </div>
+
+                {gameState === 'PLAYING' && (
+                  <div className="flex flex-col gap-1 sm:gap-2 items-center w-full mt-2 shrink-0">
+                    <div className="flex w-full justify-between gap-1 sm:gap-2">
+                      <button onClick={() => move(-1)} className="flex-1 h-10 sm:h-12 bg-white active:bg-yellow-300 text-yellow-900 rounded-lg flex justify-center items-center shadow-md border-b-4 border-yellow-200 active:border-b-0 active:translate-y-1 transition-all"><ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" /></button>
+                      <button onClick={rotate} className="flex-1 h-10 sm:h-12 bg-white active:bg-yellow-300 text-yellow-900 rounded-lg flex justify-center items-center shadow-md border-b-4 border-yellow-200 active:border-b-0 active:translate-y-1 transition-all"><RefreshCw className="w-5 h-5 sm:w-6 sm:h-6" /></button>
+                      <button onClick={() => move(1)} className="flex-1 h-10 sm:h-12 bg-white active:bg-yellow-300 text-yellow-900 rounded-lg flex justify-center items-center shadow-md border-b-4 border-yellow-200 active:border-b-0 active:translate-y-1 transition-all"><ArrowRight className="w-5 h-5 sm:w-6 sm:h-6" /></button>
+                    </div>
+                    <button onClick={moveDown} className="w-full h-10 sm:h-12 bg-orange-400 hover:bg-orange-500 active:bg-orange-600 text-white rounded-lg flex justify-center items-center shadow-md border-b-4 border-orange-600 active:border-b-0 active:translate-y-1 transition-all"><ArrowDown className="w-6 h-6 sm:w-8 sm:h-8" /></button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-1 max-w-[320px] flex flex-col justify-center h-full pt-8 ml-0 sm:ml-4">
+              {gameState === 'QUIZ' && quizData ? (
+                <div className="bg-white rounded-2xl p-4 sm:p-5 w-full shadow-xl text-center relative border-4 border-yellow-200">
+                  <p className="text-lg sm:text-2xl font-black text-slate-700 mb-4 sm:mb-5 leading-tight">{quizData.quizzes[quizData.currentQuizIndex].prompt}</p>
+                  <div className="grid grid-cols-4 gap-2 sm:gap-3">
+                    {quizData.quizzes[quizData.currentQuizIndex].options.map((col, idx) => (
+                      <button key={idx} onClick={() => handleQuizAnswer(col)} disabled={scoreAnim} className="aspect-square w-full rounded-xl shadow-sm border-4 border-slate-100 hover:scale-105 active:scale-95 transition-transform" style={{ backgroundColor: col }} />
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-yellow-100/60 rounded-2xl p-3 sm:p-4 text-center text-yellow-800 font-bold text-sm sm:text-base border-2 border-yellow-200 flex flex-col gap-2 shadow-sm w-full max-w-[250px] mx-auto">
+                  <p className="mb-2 text-base sm:text-lg">👆 さわってあそぶ</p>
+                  <p className="bg-white/50 py-1 rounded-lg">🔁 ブロックをさわる ＝ かいてん</p>
+                  <p className="bg-white/50 py-1 rounded-lg">👈👉 左右 ＝ いどう</p>
+                  <p className="bg-white/50 py-1 rounded-lg">👇 下 ＝ すこしおとす</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // ==========================================
+    // MAIN APP
+    // ==========================================
+    const App = () => {
+      const [mode, setMode] = useState('START');
+      const [questionMode, setQuestionMode] = useState('MIX');
+      const [gameBoard, setGameBoard] = useState(Array(BOARD_HEIGHT).fill(Array(BOARD_WIDTH).fill(null)));
+      const [score, setScore] = useState(0);
+      const [linesCleared, setLinesCleared] = useState(0);
+      const [stageProgress, setStageProgress] = useState(0);
+      const [soundOn, setSoundOn] = useState(true);
+      const [flyingItems, setFlyingItems] = useState([]);
+      const [scoreBump, setScoreBump] = useState(false);
+      const [linesBump, setLinesBump] = useState(false);
+
+      useEffect(() => {
+        if (linesCleared >= 10) setMode('CLEAR');
+      }, [linesCleared]);
+
+      useEffect(() => {
+        if (score > 0) { setScoreBump(true); setTimeout(() => setScoreBump(false), 300); }
+      }, [score]);
+
+      useEffect(() => {
+        if (linesCleared > 0) { setLinesBump(true); setTimeout(() => setLinesBump(false), 300); }
+      }, [linesCleared]);
+
+      const handleStart = (qMode) => {
+        setQuestionMode(qMode);
+        // スコアと列は維持するためリセットしない
+        setStageProgress(0);
+        setGameBoard(Array(BOARD_HEIGHT).fill(Array(BOARD_WIDTH).fill(null)));
+        setMode('MATH');
+      };
+
+      const triggerFly = (type, text) => {
+        const id = Date.now() + Math.random();
+        setFlyingItems(prev => [...prev, { id, type, text }]);
+        setTimeout(() => {
+          setFlyingItems(prev => prev.filter(item => item.id !== id));
+        }, 1800); // 表示時間を延長
+      };
+
+      const takeScreenshot = () => {
+        const target = document.getElementById('certificate-area');
+        if (!target) return;
+        html2canvas(target, { backgroundColor: '#f0f9ff' }).then(canvas => {
+          const link = document.createElement('a');
+          link.download = 'nambanme_clear.png';
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+        });
+      };
+
+      const todayStr = `${new Date().getFullYear()}ねん ${new Date().getMonth() + 1}がつ ${new Date().getDate()}にち`;
+
+      return (
+        <div className="fixed inset-0 bg-slate-900 flex justify-center items-center overflow-hidden font-sans text-slate-800 touch-manipulation select-none">
+          <div className="w-full h-full bg-sky-100 flex flex-col items-center relative aspect-video max-w-[177.78vh] max-h-[56.25vw] shadow-2xl">
+            
+            {/* Flying Animations Layer */}
+            {flyingItems.map(item => (
+              <div key={item.id} className={`text-2xl sm:text-4xl font-black text-orange-500 drop-shadow-md bg-white/90 px-4 py-2 rounded-full whitespace-nowrap ${item.type === 'score' ? 'fly-anim-score' : 'fly-anim-lines'}`}>
+                {item.text}
+              </div>
+            ))}
+
+            <div className="w-full bg-white shadow-md rounded-b-3xl p-2 sm:p-4 flex justify-between items-center z-10 px-2 sm:px-8">
+              <div className="flex items-center gap-1 sm:gap-2 text-lg sm:text-xl font-extrabold text-sky-600 shrink-0">
+                <Star className="text-yellow-400 w-5 h-5 sm:w-8 sm:h-8" />
+                <span className="hidden sm:inline">なんばんめ</span>
+                {mode !== 'START' && mode !== 'CLEAR' && (
+                  <button onClick={() => setMode('START')} className="ml-1 sm:ml-2 bg-sky-100 hover:bg-sky-200 text-sky-700 px-2 sm:px-4 py-1 rounded-full text-xs sm:text-sm font-bold shadow-sm transition-transform active:scale-95 border border-sky-300 whitespace-nowrap">
+                    もんだいをかえる
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1 sm:gap-4 shrink-0">
+                <button onClick={() => setSoundOn(!soundOn)} className="p-1 sm:p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors">
+                  {soundOn ? <Volume2 className="text-slate-600 w-5 h-5 sm:w-6 sm:h-6" /> : <VolumeX className="text-slate-400 w-5 h-5 sm:w-6 sm:h-6" />}
+                </button>
+                <div className={`bg-yellow-100 text-yellow-800 px-2 sm:px-3 py-1 rounded-full font-bold shadow-sm border border-yellow-300 text-xs sm:text-base whitespace-nowrap ${scoreBump ? 'animate-bump bg-yellow-200' : ''}`}>
+                  ★ <RollingNumber value={score} /> pt
+                </div>
+                <div className={`bg-green-100 text-green-800 px-2 sm:px-3 py-1 rounded-full font-bold shadow-sm border border-green-300 text-xs sm:text-base whitespace-nowrap ${linesBump ? 'animate-bump bg-green-200' : ''}`}>
+                  れつ: <RollingNumber value={linesCleared} />/10
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 w-full relative flex flex-col p-2 sm:p-4 overflow-hidden">
+              {mode === 'START' && (
+                <div className="flex-1 flex flex-col items-center justify-center pt-8">
+                  <h1 className="text-6xl sm:text-8xl font-black text-sky-600 mb-6 drop-shadow-md text-center tracking-widest" style={{ fontWeight: 900 }}>
+                    なんばんめ
+                  </h1>
+                  <p className="text-xl sm:text-2xl text-slate-600 mb-10 font-bold text-center leading-relaxed">
+                    ブロックをならべて 10れつそろえたらゴール！
+                  </p>
+                  
+                  <div className="flex flex-wrap justify-center gap-4 px-4 w-full max-w-5xl">
+                    <button onClick={() => handleStart('TAP')} className="flex-1 min-w-[120px] bg-gradient-to-b from-pink-400 to-pink-500 hover:from-pink-500 hover:to-pink-600 text-white font-bold py-3 sm:py-4 px-2 rounded-2xl shadow-lg transform transition hover:-translate-y-1 active:translate-y-1 flex flex-col items-center justify-center gap-1 border-b-4 border-pink-700">
+                      <span className="text-sm sm:text-base">○ばんめは</span><span className="text-xl sm:text-2xl">どれ？</span>
+                    </button>
+                    <button onClick={() => handleStart('IN_FRONT')} className="flex-1 min-w-[120px] bg-gradient-to-b from-blue-400 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white font-bold py-3 sm:py-4 px-2 rounded-2xl shadow-lg transform transition hover:-translate-y-1 active:translate-y-1 flex flex-col items-center justify-center gap-1 border-b-4 border-blue-700">
+                      <span className="text-sm sm:text-base">まえに</span><span className="text-xl sm:text-2xl">○にん？</span>
+                    </button>
+                    <button onClick={() => handleStart('POSITION')} className="flex-1 min-w-[120px] bg-gradient-to-b from-green-400 to-green-500 hover:from-green-500 hover:to-green-600 text-white font-bold py-3 sm:py-4 px-2 rounded-2xl shadow-lg transform transition hover:-translate-y-1 active:translate-y-1 flex flex-col items-center justify-center gap-1 border-b-4 border-green-700">
+                      <span className="text-sm sm:text-base">まえから</span><span className="text-xl sm:text-2xl">○ばんめ？</span>
+                    </button>
+                    <button onClick={() => handleStart('TOTAL')} className="flex-1 min-w-[120px] bg-gradient-to-b from-purple-400 to-purple-500 hover:from-purple-500 hover:to-purple-600 text-white font-bold py-3 sm:py-4 px-2 rounded-2xl shadow-lg transform transition hover:-translate-y-1 active:translate-y-1 flex flex-col items-center justify-center gap-1 border-b-4 border-purple-700">
+                      <span className="text-sm sm:text-base">ぜんぶで</span><span className="text-xl sm:text-2xl">○にん？</span>
+                    </button>
+                    <button onClick={() => handleStart('MIX')} className="flex-1 min-w-[120px] bg-gradient-to-b from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 text-white font-bold py-3 sm:py-4 px-2 rounded-2xl shadow-lg transform transition hover:-translate-y-1 active:translate-y-1 flex flex-col items-center justify-center gap-1 border-b-4 border-orange-700">
+                      <span className="text-sm sm:text-base">ぜんぶ</span><span className="text-xl sm:text-2xl">ミックス</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {mode === 'MATH' && (
+                <MathStage onComplete={() => setMode('GAME')} addScore={p => setScore(s => s + p)} progress={stageProgress} setProgress={setStageProgress} soundOn={soundOn} triggerFly={triggerFly} questionMode={questionMode} />
+              )}
+              
+              {mode === 'GAME' && (
+                <MiniGameStage onTimeUp={() => setMode('MATH')} onQuit={() => setMode('START')} onRetry={() => setMode('MATH')} addScore={p => setScore(s => s + p)} addLines={l => setLinesCleared(c => c + l)} board={gameBoard} setBoard={setGameBoard} soundOn={soundOn} triggerFly={triggerFly} />
+              )}
+
+              {mode === 'CLEAR' && (
+                <div className="flex-1 flex flex-col items-center justify-center w-full h-full relative p-4">
+                  {/* スナップショット用のエリア。見切れないように余白と枠を調整 */}
+                  <div id="certificate-area" className="bg-white w-full max-w-4xl p-4 sm:p-6 pb-6 sm:pb-10 rounded-3xl border-[8px] border-yellow-400 shadow-2xl flex flex-col items-center relative overflow-hidden bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMiIgZmlsbD0iI2ZiYmYyNCIgb3BhY2l0eT0iMC41Ii8+PC9zdmc+')]">
+                    
+                    <div className="absolute top-3 right-5 text-slate-500 font-bold text-base sm:text-lg">
+                      {todayStr}
+                    </div>
+
+                    <h1 className="text-3xl sm:text-5xl font-black text-orange-500 mt-4 mb-4 drop-shadow-sm tracking-widest border-b-4 border-orange-300 pb-2">
+                      👑 しょうじょう 👑
+                    </h1>
+                    
+                    <p className="text-lg sm:text-2xl text-slate-700 mb-6 font-bold leading-relaxed text-center">
+                      あなたは 10れつ ぜんぶけして<br/>
+                      すばらしい せいせきを おさめました！
+                    </p>
+                    
+                    <div className="bg-yellow-100 border-2 border-yellow-300 rounded-3xl py-4 px-8 mb-6 transform -rotate-2 shadow-md flex items-center justify-center min-h-[90px] sm:min-h-[120px]">
+                      <div className="font-black text-yellow-600 drop-shadow-md text-center" style={{ lineHeight: 1 }}>
+                        <span className="text-5xl sm:text-7xl inline-block align-middle">{score}</span>
+                        <span className="text-3xl sm:text-5xl inline-block align-middle ml-2 mt-2">pt</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4 text-4xl sm:text-6xl animate-bounce mb-2">
+                      🌟 🎉 🎈 🎊 🌟
+                    </div>
+                  </div>
+
+                  <div className="flex gap-6 mt-8">
+                    <button onClick={() => { setScore(0); setLinesCleared(0); setMode('START'); }} className="bg-sky-500 hover:bg-sky-600 text-white text-xl sm:text-2xl font-bold py-3 px-8 rounded-full shadow-lg transform transition hover:scale-105 active:scale-95 flex items-center gap-2">
+                      <RefreshCcw className="w-7 h-7" />さいしょから
+                    </button>
+                    <button onClick={takeScreenshot} className="bg-pink-500 hover:bg-pink-600 text-white text-xl sm:text-2xl font-bold py-3 px-8 rounded-full shadow-lg transform transition hover:scale-105 active:scale-95 flex items-center gap-2">
+                      <Camera className="w-7 h-7" />きねんしゃしん
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
