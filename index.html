@@ -4,9 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>なんばんめ</title>
-  <meta property="og:title" content="なんばんめ">
-    <meta property="og:description" content="【１年算数ものとひとのかず】なんばんめの問題の練習アプリです。">
-    <meta property="og:type" content="website">
   
   <!-- 丸くてかわいいフォント（Zen Maru Gothic）を読み込む -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -501,6 +498,33 @@
           mergePiece();
         }
       }, [currentPiece, gameState, checkCollision, mergePiece, soundOn]);
+
+      useEffect(() => {
+        const handleKeyDown = (e) => {
+          if (gameState !== 'PLAYING') return;
+          switch (e.key) {
+            case 'ArrowLeft':
+              e.preventDefault();
+              move(-1);
+              break;
+            case 'ArrowRight':
+              e.preventDefault();
+              move(1);
+              break;
+            case 'ArrowDown':
+              e.preventDefault();
+              moveDown();
+              break;
+            case 'ArrowUp':
+            case ' ': // Spaceキーでも回転できるように追加
+              e.preventDefault();
+              rotate();
+              break;
+          }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+      }, [gameState, move, moveDown, rotate]);
 
       const handleQuizAnswer = (color) => {
         if (scoreAnim) return;
